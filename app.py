@@ -1,41 +1,26 @@
-import requests
+import os
 import time
+import requests
 
-def get_coordinates(city_name):
-    """Convert city name to latitude and longitude using Open-Meteo Geocoding API."""
-    url = f"https://geocoding-api.open-meteo.com/v1/search?name={city_name}&count=1"
-    response = requests.get(url).json()
-    if "results" in response and len(response["results"]) > 0:
-        lat = response["results"][0]["latitude"]
-        lon = response["results"][0]["longitude"]
-        return lat, lon
-    else:
-        raise ValueError("City not found!")
+def get_temperature(city):
+    # Use geocoding API to convert city -> lat/lon
+    geo_url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1"
+    geo_res = requests.get(geo_url).json()
+    if "results" not in geo_res:
+        return None, None
+    lat = geo_res["results"][0]["latitude"]
+    lon = geo_res["results"][0]["longitude"]
 
-# Ask user for location
-city = input("Enter city name: ")
-lat, lon = get_coordinates(city)
-print(f"Coordinates for {city}: {lat}, {lon}")
+    url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current_weather=true"
+    data = requests.get(url).json()
+    return data["current_weather"]["temperature"], data["current_weather"]["time"]
 
-# Open-Meteo API URL
-URL = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&hourly=temperature_2m"
+city = os.getenv("CITY", "Hyderabad")   # default Hyderabad
 
-last_temp = None  # to store previous temperature
-
+last_temp = None
 while True:
-    try:
-        response = requests.get(URL)
-        data = response.json()
-        temp = data["hourly"]["temperature_2m"][0]
-
-        if last_temp is None or temp != last_temp:
-            print(f"{time.ctime()}: Current temperature in {city}: {temp}°C")
-            with open("/app/temperature.txt", "a") as f:
-                f.write(f"{time.ctime()}: {city}: {temp}°C\n")
-            last_temp = temp  # update last_temp
-
-    except Exception as e:
-        print("Error fetching temperature:", e)
-
-    time.sleep(60)  # fetch every 60 seconds
-
+    temp, ts = get_temperature(city)
+    if temp is not None and temp != last_temp:
+        print(f"[{ts}] Current temperature in {city}: {temp}°C")
+        last_temp = temp
+    time.sleep(30)
